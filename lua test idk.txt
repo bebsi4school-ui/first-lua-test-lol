@@ -1,0 +1,706 @@
+-- AdminPanel LocalScript (single-file)
+-- Put this in StarterPlayerScripts or StarterGui as a LocalScript
+-- Features: polished GUI (tweens, UIStroke, UICorner, UIScale), Credits, Fly, Load Script
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Helper: tween helper
+local function tween(instance, props, info)
+	info = info or TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	return TweenService:Create(instance, info, props)
+end
+
+-- Utility: simple toaster/status
+local function notify(text, duration)
+	duration = duration or 3
+	local toast = Instance.new("Frame")
+	toast.Name = "Toast"
+	toast.Size = UDim2.new(0, 300, 0, 36)
+	toast.Position = UDim2.new(0.5, -150, 0.12, 0)
+	toast.AnchorPoint = Vector2.new(0.5, 0)
+	toast.BackgroundTransparency = 1
+	toast.Parent = playerGui
+
+	local bg = Instance.new("Frame", toast)
+	bg.Size = UDim2.new(1, 0, 1, 0)
+	bg.BackgroundTransparency = 0
+	bg.BackgroundColor3 = Color3.fromRGB(34, 34, 34)
+	bg.BorderSizePixel = 0
+	bg.AnchorPoint = Vector2.new(0.5,0)
+	bg.Position = UDim2.new(0,0,0,0)
+	local corner = Instance.new("UICorner", bg)
+	corner.CornerRadius = UDim.new(0, 8)
+	local stroke = Instance.new("UIStroke", bg)
+	stroke.Thickness = 1
+	stroke.Transparency = 0.6
+
+	local label = Instance.new("TextLabel", bg)
+	label.Size = UDim2.new(1, -16, 1, 0)
+	label.Position = UDim2.new(0, 8, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextColor3 = Color3.fromRGB(240,240,240)
+	label.Font = Enum.Font.Gotham
+	label.TextSize = 14
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextWrapped = true
+
+	-- animate in
+	bg.Position = UDim2.new(0, 0, 0, -10)
+	bg.BackgroundTransparency = 1
+	tween(bg, {BackgroundTransparency = 0}, TweenInfo.new(0.25)).Tween:Play()
+	tween(toast, {Position = UDim2.new(0.5, -150, 0.08, 0)}, TweenInfo.new(0.25)).Tween:Play()
+
+	delay(duration, function()
+		tween(bg, {BackgroundTransparency = 1}, TweenInfo.new(0.2)).Tween:Play()
+		tween(toast, {Position = UDim2.new(0.5, -150, 0.04, 0)}, TweenInfo.new(0.2)).Tween:Play()
+		wait(0.35)
+		toast:Destroy()
+	end)
+end
+
+-- Main GUI creation
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AdminPanelGUI"
+screenGui.DisplayOrder = 1000
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.Parent = playerGui
+
+-- Responsive scaling
+local uiScale = Instance.new("UIScale", screenGui)
+uiScale.Name = "AutoScale"
+uiScale.Scale = 1  -- we'll set based on viewport size below
+
+local function updateScale()
+	local base = math.clamp(math.min(workspace.CurrentCamera.ViewportSize.X / 1280, workspace.CurrentCamera.ViewportSize.Y / 720), 0.6, 1.2)
+	uiScale.Scale = base
+end
+updateScale()
+workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
+
+-- Blur background overlay (subtle)
+local overlay = Instance.new("Frame")
+overlay.Name = "Overlay"
+overlay.AnchorPoint = Vector2.new(0.5, 0.5)
+overlay.Size = UDim2.new(1,0,1,0)
+overlay.Position = UDim2.new(0.5,0,0.5,0)
+overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+overlay.BackgroundTransparency = 0.5
+overlay.Parent = screenGui
+overlay.Visible = false
+
+-- Main panel (center)
+local panel = Instance.new("Frame")
+panel.Name = "Panel"
+panel.Size = UDim2.new(0, 520, 0, 320)
+panel.AnchorPoint = Vector2.new(0.5, 0.5)
+panel.Position = UDim2.new(0.5, 0, 0.5, 0)
+panel.BackgroundColor3 = Color3.fromRGB(24,24,30)
+panel.BorderSizePixel = 0
+panel.Parent = screenGui
+panel.Visible = false
+panel.ClipsDescendants = true
+
+local panelCorner = Instance.new("UICorner", panel)
+panelCorner.CornerRadius = UDim.new(0, 14)
+local panelStroke = Instance.new("UIStroke", panel)
+panelStroke.Thickness = 1
+panelStroke.Transparency = 0.6
+
+local header = Instance.new("Frame", panel)
+header.Name = "Header"
+header.Size = UDim2.new(1, 0, 0, 64)
+header.Position = UDim2.new(0, 0, 0, 0)
+header.BackgroundTransparency = 1
+
+local title = Instance.new("TextLabel", header)
+title.Size = UDim2.new(0.7, -20, 1, 0)
+title.Position = UDim2.new(0, 16, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "Admin Panel"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 20
+title.TextColor3 = Color3.fromRGB(245,245,245)
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextYAlignment = Enum.TextYAlignment.Center
+
+local subtitle = Instance.new("TextLabel", header)
+subtitle.Size = UDim2.new(0.5, -20, 1, 0)
+subtitle.Position = UDim2.new(0, 16, 0, 28)
+subtitle.BackgroundTransparency = 1
+subtitle.Text = "Free Admin • Smooth UI"
+subtitle.Font = Enum.Font.Gotham
+subtitle.TextSize = 12
+subtitle.TextColor3 = Color3.fromRGB(180,180,180)
+subtitle.TextXAlignment = Enum.TextXAlignment.Left
+subtitle.TextYAlignment = Enum.TextYAlignment.Top
+
+-- Close (X) button
+local closeBtn = Instance.new("TextButton", header)
+closeBtn.Name = "Close"
+closeBtn.Size = UDim2.new(0, 36, 0, 36)
+closeBtn.Position = UDim2.new(1, -44, 0.5, -18)
+closeBtn.AnchorPoint = Vector2.new(0, 0)
+closeBtn.BackgroundColor3 = Color3.fromRGB(45,45,50)
+closeBtn.BorderSizePixel = 0
+closeBtn.Text = "✕"
+closeBtn.Font = Enum.Font.Gotham
+closeBtn.TextSize = 18
+closeBtn.TextColor3 = Color3.fromRGB(220,220,220)
+closeBtn.AutoButtonColor = true
+local closeCorner = Instance.new("UICorner", closeBtn)
+closeCorner.CornerRadius = UDim.new(0, 10)
+local closeStroke = Instance.new("UIStroke", closeBtn)
+closeStroke.Transparency = 0.7
+closeStroke.Thickness = 1
+
+-- Body area for main content
+local body = Instance.new("Frame", panel)
+body.Name = "Body"
+body.Position = UDim2.new(0, 16, 0, 72)
+body.Size = UDim2.new(1, -32, 1, -88)
+body.BackgroundTransparency = 1
+
+-- Buttons container
+local buttonsFrame = Instance.new("Frame", body)
+buttonsFrame.Name = "Buttons"
+buttonsFrame.Size = UDim2.new(1, 0, 0, 86)
+buttonsFrame.Position = UDim2.new(0, 0, 0, 0)
+buttonsFrame.BackgroundTransparency = 1
+
+local layout = Instance.new("UIListLayout", buttonsFrame)
+layout.FillDirection = Enum.FillDirection.Horizontal
+layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+layout.VerticalAlignment = Enum.VerticalAlignment.Center
+layout.Padding = UDim.new(0, 18)
+
+-- Button factory
+local function makeButton(name, text)
+	local btn = Instance.new("TextButton")
+	btn.Name = name
+	btn.Size = UDim2.new(0, 150, 0, 64)
+	btn.BackgroundColor3 = Color3.fromRGB(40,40,46)
+	btn.BorderSizePixel = 0
+	btn.Text = text
+	btn.Font = Enum.Font.GothamSemibold
+	btn.TextSize = 16
+	btn.TextColor3 = Color3.fromRGB(240,240,240)
+	btn.AutoButtonColor = false
+
+	local corner = Instance.new("UICorner", btn)
+	corner.CornerRadius = UDim.new(0, 12)
+	local stroke = Instance.new("UIStroke", btn)
+	stroke.Thickness = 1
+	stroke.Transparency = 0.6
+
+	-- subtle hover effect
+	btn.MouseEnter:Connect(function()
+		tween(btn, {BackgroundColor3 = Color3.fromRGB(55,55,63)}, TweenInfo.new(0.18)).Tween:Play()
+		tween(btn, {Size = UDim2.new(0, 156, 0, 66)}, TweenInfo.new(0.12)).Tween:Play()
+	end)
+	btn.MouseLeave:Connect(function()
+		tween(btn, {BackgroundColor3 = Color3.fromRGB(40,40,46)}, TweenInfo.new(0.18)).Tween:Play()
+		tween(btn, {Size = UDim2.new(0, 150, 0, 64)}, TweenInfo.new(0.12)).Tween:Play()
+	end)
+
+	return btn
+end
+
+local creditsBtn = makeButton("CreditsBtn", "Credits")
+creditsBtn.Parent = buttonsFrame
+local flyBtn = makeButton("FlyBtn", "Fly")
+flyBtn.Parent = buttonsFrame
+local loadBtn = makeButton("LoadBtn", "Load Script")
+loadBtn.Parent = buttonsFrame
+
+-- Small status label
+local statusLabel = Instance.new("TextLabel", body)
+statusLabel.Name = "Status"
+statusLabel.Position = UDim2.new(0, 0, 0, 94)
+statusLabel.Size = UDim2.new(1, 0, 0, 54)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "Status: Idle"
+statusLabel.Font = Enum.Font.Gotham
+statusLabel.TextSize = 14
+statusLabel.TextColor3 = Color3.fromRGB(200,200,200)
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.TextYAlignment = Enum.TextYAlignment.Top
+
+-- Credits modal (hidden)
+local creditsModal = Instance.new("Frame", panel)
+creditsModal.Name = "CreditsModal"
+creditsModal.Size = UDim2.new(0, 360, 0, 180)
+creditsModal.AnchorPoint = Vector2.new(0.5, 0.5)
+creditsModal.Position = UDim2.new(0.5, 0.5, 0.5, 0)
+creditsModal.BackgroundColor3 = Color3.fromRGB(28,28,32)
+creditsModal.Visible = false
+creditsModal.ZIndex = 50
+local credCorner = Instance.new("UICorner", creditsModal)
+credCorner.CornerRadius = UDim.new(0, 10)
+local credStroke = Instance.new("UIStroke", creditsModal)
+credStroke.Transparency = 0.6
+credStroke.Thickness = 1
+
+local credTitle = Instance.new("TextLabel", creditsModal)
+credTitle.Size = UDim2.new(1, -24, 0, 36)
+credTitle.Position = UDim2.new(0, 12, 0, 12)
+credTitle.BackgroundTransparency = 1
+credTitle.Text = "Credits"
+credTitle.Font = Enum.Font.GothamBold
+credTitle.TextSize = 18
+credTitle.TextColor3 = Color3.fromRGB(240,240,240)
+credTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+local credBody = Instance.new("TextLabel", creditsModal)
+credBody.Size = UDim2.new(1, -24, 1, -60)
+credBody.Position = UDim2.new(0, 12, 0, 44)
+credBody.BackgroundTransparency = 1
+credBody.Text = "Created by: You\nUI powered by TweenService\nFly implementation adapted for smooth, camera-relative control.\nPlease review remote scripts before loading them."
+credBody.Font = Enum.Font.Gotham
+credBody.TextSize = 14
+credBody.TextColor3 = Color3.fromRGB(200,200,200)
+credBody.TextXAlignment = Enum.TextXAlignment.Left
+credBody.TextYAlignment = Enum.TextYAlignment.Top
+credBody.TextWrapped = true
+
+local credClose = Instance.new("TextButton", creditsModal)
+credClose.Size = UDim2.new(0, 28, 0, 28)
+credClose.Position = UDim2.new(1, -40, 0, 12)
+credClose.BackgroundColor3 = Color3.fromRGB(45,45,50)
+credClose.Text = "✕"
+credClose.Font = Enum.Font.Gotham
+credClose.TextSize = 16
+local credCloseCorner = Instance.new("UICorner", credClose)
+credCloseCorner.CornerRadius = UDim.new(0, 8)
+local credCloseStroke = Instance.new("UIStroke", credClose)
+credCloseStroke.Transparency = 0.7
+credClose.Parent = creditsModal
+
+-- Load Script modal
+local loadModal = Instance.new("Frame", panel)
+loadModal.Name = "LoadModal"
+loadModal.Size = UDim2.new(0, 420, 0, 150)
+loadModal.AnchorPoint = Vector2.new(0.5, 0.5)
+loadModal.Position = UDim2.new(0.5, 0.5, 0.5, 0)
+loadModal.BackgroundColor3 = Color3.fromRGB(28,28,32)
+loadModal.Visible = false
+local loadCorner = Instance.new("UICorner", loadModal)
+loadCorner.CornerRadius = UDim.new(0, 10)
+local loadStroke = Instance.new("UIStroke", loadModal)
+loadStroke.Transparency = 0.6
+loadStroke.Thickness = 1
+
+local loadTitle = Instance.new("TextLabel", loadModal)
+loadTitle.Size = UDim2.new(1, -24, 0, 36)
+loadTitle.Position = UDim2.new(0, 12, 0, 12)
+loadTitle.BackgroundTransparency = 1
+loadTitle.Text = "Load Script (paste URL or code)"
+loadTitle.Font = Enum.Font.GothamBold
+loadTitle.TextSize = 16
+loadTitle.TextColor3 = Color3.fromRGB(240,240,240)
+loadTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+local loadBox = Instance.new("TextBox", loadModal)
+loadBox.Size = UDim2.new(1, -24, 0, 64)
+loadBox.Position = UDim2.new(0, 12, 0, 48)
+loadBox.ClearTextOnFocus = false
+loadBox.MultiLine = true
+loadBox.TextWrapped = true
+loadBox.Text = "https://raw.githubusercontent.com/username/repo/main/script.lua"
+loadBox.PlaceholderText = "Paste raw GitHub/Gist URL or paste Lua source code here"
+loadBox.Font = Enum.Font.Gotham
+loadBox.TextSize = 14
+loadBox.TextColor3 = Color3.fromRGB(230,230,230)
+loadBox.BackgroundColor3 = Color3.fromRGB(22,22,26)
+local loadBoxCorner = Instance.new("UICorner", loadBox)
+loadBoxCorner.CornerRadius = UDim.new(0, 8)
+local loadBoxStroke = Instance.new("UIStroke", loadBox)
+loadBoxStroke.Transparency = 0.7
+
+local loadConfirm = Instance.new("TextButton", loadModal)
+loadConfirm.Size = UDim2.new(0, 120, 0, 36)
+loadConfirm.Position = UDim2.new(1, -136, 1, -48)
+loadConfirm.Text = "Load"
+loadConfirm.Font = Enum.Font.GothamSemibold
+loadConfirm.TextSize = 14
+loadConfirm.BackgroundColor3 = Color3.fromRGB(50,120,220)
+local loadConfirmCorner = Instance.new("UICorner", loadConfirm)
+loadConfirmCorner.CornerRadius = UDim.new(0, 8)
+
+local loadCancel = Instance.new("TextButton", loadModal)
+loadCancel.Size = UDim2.new(0, 80, 0, 36)
+loadCancel.Position = UDim2.new(1, -218, 1, -48)
+loadCancel.Text = "Cancel"
+loadCancel.Font = Enum.Font.Gotham
+loadCancel.TextSize = 14
+loadCancel.BackgroundColor3 = Color3.fromRGB(72,72,80)
+local loadCancelCorner = Instance.new("UICorner", loadCancel)
+loadCancelCorner.CornerRadius = UDim.new(0, 8)
+
+-- Show / hide functions with nice tweens
+local function showPanel()
+	if panel.Visible then return end
+	overlay.Visible = true
+	panel.Visible = true
+	creditsModal.Visible = false
+	loadModal.Visible = false
+
+	panel.Position = UDim2.new(0.5, 0, -0.6, 0)
+	panel.BackgroundTransparency = 1
+	tween(panel, {Position = UDim2.new(0.5, 0, 0.5, 0)}, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out)).Tween:Play()
+	tween(panel, {BackgroundTransparency = 0}, TweenInfo.new(0.3)).Tween:Play()
+end
+
+local function hidePanel()
+	if not panel.Visible then return end
+	tween(panel, {Position = UDim2.new(0.5, 0, -0.6, 0)}, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.In)).Tween:Play()
+	tween(panel, {BackgroundTransparency = 1}, TweenInfo.new(0.25)).Tween:Play()
+	delay(0.28, function()
+		panel.Visible = false
+		overlay.Visible = false
+	end)
+end
+
+-- Open the panel via a simple keybind (RightShift) for convenience
+UserInputService.InputBegan:Connect(function(inp, gameProcessed)
+	if gameProcessed then return end
+	if inp.KeyCode == Enum.KeyCode.RightShift then
+		if panel.Visible then hidePanel() else showPanel() end
+	end
+end)
+
+-- Close button
+closeBtn.MouseButton1Click:Connect(function()
+	hidePanel()
+end)
+
+-- Credits UI handlers
+creditsBtn.MouseButton1Click:Connect(function()
+	overlay.Visible = true
+	creditsModal.Visible = true
+	creditsModal.Size = UDim2.new(0, 360, 0, 120)
+	creditsModal.Position = UDim2.new(0.5, 0, -0.5, 0)
+	tween(creditsModal, {Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.new(0, 360, 0, 180)}, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out)).Tween:Play()
+end)
+credClose.MouseButton1Click:Connect(function()
+	tween(creditsModal, {Position = UDim2.new(0.5, 0, -0.5, 0), Size = UDim2.new(0, 360, 0, 120)}, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)).Tween:Play()
+	delay(0.18, function()
+		creditsModal.Visible = false
+		overlay.Visible = false
+	end)
+end)
+
+-- Load modal handlers
+loadBtn.MouseButton1Click:Connect(function()
+	overlay.Visible = true
+	loadModal.Visible = true
+	loadModal.Position = UDim2.new(0.5, 0, -0.4, 0)
+	loadModal.Size = UDim2.new(0, 420, 0, 130)
+	tween(loadModal, {Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.new(0, 420, 0, 150)}, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out)).Tween:Play()
+end)
+
+loadCancel.MouseButton1Click:Connect(function()
+	tween(loadModal, {Position = UDim2.new(0.5, 0, -0.4, 0), Size = UDim2.new(0, 420, 0, 130)}, TweenInfo.new(0.18)).Tween:Play()
+	delay(0.18, function()
+		loadModal.Visible = false
+		overlay.Visible = false
+	end)
+end)
+
+-- Try to fetch code safely (returns code string or nil and error)
+local function fetchCode(input)
+	-- Determine if input is a URL
+	if tostring(input):match("^%s*https?://") then
+		local url = input:match("^%s*(https?://%S+)%s*$")
+		if not url then return nil, "Invalid URL" end
+		-- Try HttpService:GetAsync
+		local ok, result = pcall(function() return HttpService:GetAsync(url, true) end)
+		if ok then
+			return result
+		end
+		-- Try game:HttpGet fallback (some environments)
+		if type(game.HttpGet) == "function" then
+			local ok2, res2 = pcall(function() return game:HttpGet(url) end)
+			if ok2 then return res2 end
+		end
+		return nil, "HTTP request failed: "..tostring(result)
+	else
+		-- treat as raw code typed/pasted
+		return input, nil
+	end
+end
+
+local function safeLoadAndRun(codeText)
+	if not codeText or codeText == "" then
+		return false, "Empty code"
+	end
+	-- compile using loadstring or load
+	local func, err
+	if type(loadstring) == "function" then
+		func, err = loadstring(codeText)
+	else
+		-- load exists in Luau
+		local ok, v = pcall(load, codeText)
+		if ok then func = v else err = v end
+	end
+	if not func then
+		return false, "Compile error: "..tostring(err)
+	end
+	-- run safely
+	local ok2, runErr = pcall(func)
+	if not ok2 then
+		return false, "Runtime error: "..tostring(runErr)
+	end
+	return true, "Executed successfully"
+end
+
+loadConfirm.MouseButton1Click:Connect(function()
+	statusLabel.Text = "Status: Loading..."
+	loadConfirm.Text = "Loading..."
+	loadConfirm.Active = false
+	local inputText = loadBox.Text
+	spawn(function()
+		local code, fetchErr = fetchCode(inputText)
+		if not code then
+			statusLabel.Text = "Status: Error fetching: "..tostring(fetchErr)
+			notify("Load failed: "..tostring(fetchErr), 4)
+			loadConfirm.Text = "Load"
+			loadConfirm.Active = true
+			return
+		end
+
+		local ok, msg = safeLoadAndRun(code)
+		if ok then
+			statusLabel.Text = "Status: Script loaded successfully"
+			notify("Script loaded: "..tostring(msg), 3)
+		else
+			statusLabel.Text = "Status: "..tostring(msg)
+			notify("Error: "..tostring(msg), 5)
+		end
+		loadConfirm.Text = "Load"
+		loadConfirm.Active = true
+	end)
+end)
+
+-- -------------------------
+-- Advanced Fly Implementation
+-- -------------------------
+local FlyController = {}
+FlyController.__index = FlyController
+
+function FlyController.new()
+	local self = setmetatable({}, FlyController)
+	self.enabled = false
+	self.speed = 60         -- base speed
+	self.acceleration = 8   -- smoothing factor
+	self.fineSpeed = 12     -- speed when "shift" is not pressed; use shift to boost
+	self.boostMult = 2.0
+	self.ascendKey = Enum.KeyCode.Space
+	self.descendKey = Enum.KeyCode.LeftControl
+	self.toggleKey = Enum.KeyCode.F -- toggle with F (or use UI button)
+	self.control = {W=false,S=false,A=false,D=false,Up=false,Down=false}
+	self.bv = nil
+	self.bg = nil
+	self.conn = nil
+	self.renderConn = nil
+	self.character = nil
+	self.humanoid = nil
+	self.root = nil
+	return self
+end
+
+function FlyController:_ensureCharacter()
+	local char = player.Character or player.CharacterAdded:Wait()
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char.PrimaryPart
+	if hum and root then
+		self.character = char
+		self.humanoid = hum
+		self.root = root
+		return true
+	end
+	return false
+end
+
+function FlyController:_cleanup()
+	if self.renderConn then
+		self.renderConn:Disconnect()
+		self.renderConn = nil
+	end
+	if self.bg then
+		self.bg:Destroy()
+		self.bg = nil
+	end
+	if self.bv then
+		self.bv:Destroy()
+		self.bv = nil
+	end
+	if self.humanoid then
+		pcall(function() self.humanoid.PlatformStand = false end)
+	end
+end
+
+function FlyController:enable()
+	if self.enabled then return end
+	if not self:_ensureCharacter() then notify("Fly: could not find character", 3); return end
+
+	self.enabled = true
+	-- create BodyGyro & BodyVelocity
+	local root = self.root
+	self.bg = Instance.new("BodyGyro")
+	self.bg.Name = "AdminFlyBodyGyro"
+	self.bg.Parent = root
+	self.bg.MaxTorque = Vector3.new(9e9,9e9,9e9)
+	self.bg.P = 5000
+	self.bg.D = 1000
+
+	self.bv = Instance.new("BodyVelocity")
+	self.bv.Name = "AdminFlyBodyVelocity"
+	self.bv.Parent = root
+	self.bv.MaxForce = Vector3.new(9e9,9e9,9e9)
+	self.bv.Velocity = Vector3.new(0,0,0)
+	self.bv.P = 1250
+
+	-- disable default Humanoid control
+	if self.humanoid then
+		pcall(function() self.humanoid.PlatformStand = true end)
+	end
+
+	-- listen to inputs
+	self.conn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then return end
+		if input.KeyCode == Enum.KeyCode.W then self.control.W = true end
+		if input.KeyCode == Enum.KeyCode.S then self.control.S = true end
+		if input.KeyCode == Enum.KeyCode.A then self.control.A = true end
+		if input.KeyCode == Enum.KeyCode.D then self.control.D = true end
+		if input.KeyCode == self.ascendKey then self.control.Up = true end
+		if input.KeyCode == self.descendKey then self.control.Down = true end
+	end)
+	self.conn2 = UserInputService.InputEnded:Connect(function(input, gameProcessed)
+		if input.KeyCode == Enum.KeyCode.W then self.control.W = false end
+		if input.KeyCode == Enum.KeyCode.S then self.control.S = false end
+		if input.KeyCode == Enum.KeyCode.A then self.control.A = false end
+		if input.KeyCode == Enum.KeyCode.D then self.control.D = false end
+		if input.KeyCode == self.ascendKey then self.control.Up = false end
+		if input.KeyCode == self.descendKey then self.control.Down = false end
+	end)
+
+	-- render loop to smoothly update movement relative to camera
+	local cam = workspace.CurrentCamera
+	local velocity = Vector3.new(0,0,0)
+	local smooth = 0.2
+	self.renderConn = RunService.RenderStepped:Connect(function(dt)
+		if not self.enabled or not self.root or not cam then return end
+		-- camera relative directions
+		local look = cam.CFrame.LookVector
+		local right = cam.CFrame.RightVector
+		local up = Vector3.new(0,1,0)
+
+		local moveVec = Vector3.new(0,0,0)
+		if self.control.W then moveVec = moveVec + Vector3.new(look.X, 0, look.Z) end
+		if self.control.S then moveVec = moveVec - Vector3.new(look.X, 0, look.Z) end
+		if self.control.A then moveVec = moveVec - Vector3.new(right.X, 0, right.Z) end
+		if self.control.D then moveVec = moveVec + Vector3.new(right.X, 0, right.Z) end
+
+		-- vertical
+		local vert = 0
+		if self.control.Up then vert = vert + 1 end
+		if self.control.Down then vert = vert - 1 end
+
+		-- normalize and compute speed
+		if moveVec.Magnitude > 0 then
+			moveVec = moveVec.Unit
+		end
+		local shift = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+		local targetSpeed = self.speed * (shift and self.boostMult or 1)
+		local horizontal = moveVec * targetSpeed
+		local vertical = Vector3.new(0, vert * (self.fineSpeed * (shift and self.boostMult or 1)), 0)
+
+		local targetVel = horizontal + vertical
+
+		-- smoothing
+		velocity = velocity:Lerp(targetVel, math.clamp(self.acceleration * dt, 0, 1))
+		if self.bv then
+			self.bv.Velocity = velocity
+		end
+
+		-- keep upright orientation roughly matching camera
+		if self.bg then
+			self.bg.CFrame = CFrame.new(root.Position, root.Position + cam.CFrame.LookVector)
+		end
+	end)
+
+	notify("Fly enabled (toggle with UI or press F). Use WASD + Space/Ctrl. Hold Shift to boost.", 4)
+end
+
+function FlyController:disable()
+	if not self.enabled then return end
+	self.enabled = false
+	self:_cleanup()
+	if self.conn then self.conn:Disconnect(); self.conn = nil end
+	if self.conn2 then self.conn2:Disconnect(); self.conn2 = nil end
+	notify("Fly disabled", 2)
+end
+
+function FlyController:toggle()
+	if self.enabled then
+		self:disable()
+	else
+		self:enable()
+	end
+end
+
+-- instantiate controller
+local flyController = FlyController.new()
+
+-- wire fly button
+flyBtn.MouseButton1Click:Connect(function()
+	flyController:toggle()
+	if flyController.enabled then
+		flyBtn.Text = "Fly (On)"
+		flyBtn.BackgroundColor3 = Color3.fromRGB(60,160,80)
+	else
+		flyBtn.Text = "Fly"
+		flyBtn.BackgroundColor3 = Color3.fromRGB(40,40,46)
+	end
+end)
+
+-- Also allow F key to toggle
+UserInputService.InputBegan:Connect(function(inp, gp)
+	if gp then return end
+	if inp.KeyCode == Enum.KeyCode.F then
+		flyController:toggle()
+		if flyController.enabled then
+			flyBtn.Text = "Fly (On)"
+			flyBtn.BackgroundColor3 = Color3.fromRGB(60,160,80)
+		else
+			flyBtn.Text = "Fly"
+			flyBtn.BackgroundColor3 = Color3.fromRGB(40,40,46)
+		end
+	end
+end)
+
+-- Small polish: animate panel opening on script start
+delay(0.2, function()
+	showPanel()
+end)
+
+-- Clean up on character removal (disable fly)
+player.CharacterRemoving:Connect(function()
+	flyController:disable()
+end)
+
+-- Final safety/status
+notify("Admin Panel loaded. Toggle with RightShift.", 3)
+statusLabel.Text = "Status: Ready"
+
+-- End of script
